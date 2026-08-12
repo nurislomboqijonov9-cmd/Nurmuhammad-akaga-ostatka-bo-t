@@ -4,7 +4,7 @@ from urllib.parse import parse_qsl
 
 import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Body
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 import telebot
 from telebot import types
 
@@ -252,24 +252,43 @@ def index():
     return FileResponse(os.path.join(HERE, "index.html"))
 
 
+def _find(name, alt):
+    # avval to'g'ri nom, bo'lmasa muqobil (-6 kabi) nomни topadi
+    for f in [name] + alt:
+        p = os.path.join(HERE, f)
+        if os.path.exists(p):
+            return p
+    return None
+
+
 @app.get("/manifest.json")
 def manifest():
-    return FileResponse(os.path.join(HERE, "manifest.json"))
+    p = _find("manifest.json", [])
+    return FileResponse(p) if p else {"name": "Ombor"}
 
 
 @app.get("/sw.js")
 def sw():
-    return FileResponse(os.path.join(HERE, "sw.js"), media_type="application/javascript")
+    p = _find("sw.js", [])
+    if p:
+        return FileResponse(p, media_type="application/javascript")
+    return HTMLResponse("", media_type="application/javascript")
 
 
 @app.get("/icon-192.png")
 def i192():
-    return FileResponse(os.path.join(HERE, "icon-192.png"))
+    p = _find("icon-192.png", ["icon-192-6.png"])
+    if p:
+        return FileResponse(p)
+    raise HTTPException(404)
 
 
 @app.get("/icon-512.png")
 def i512():
-    return FileResponse(os.path.join(HERE, "icon-512.png"))
+    p = _find("icon-512.png", ["icon-512-6.png"])
+    if p:
+        return FileResponse(p)
+    raise HTTPException(404)
 
 
 # ================== BOT ==================
