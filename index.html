@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f1620">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<title>Ombor</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{
+    --bg:#0f1620; --card:#182430; --card2:#1f2e3c; --line:#26384a;
+    --text:#e8eef5; --muted:#8399ac; --accent:#3fb950; --danger:#f0603a;
+    --blue:#2f81f7;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);
+       min-height:100vh;max-width:520px;margin:0 auto;padding-bottom:90px}
+
+  header{padding:18px 18px 10px;position:sticky;top:0;background:var(--bg);z-index:10;
+    display:flex;align-items:center;justify-content:space-between}
+  header h1{font-size:20px;font-weight:700;letter-spacing:-.3px}
+  header p{color:var(--muted);font-size:13px;margin-top:2px}
+  .admin-btn{background:var(--card);border:1px solid var(--line);color:var(--text);
+    padding:9px 14px;border-radius:10px;font-size:13px;font-weight:600;display:none}
+
+  .totals{display:flex;gap:10px;padding:0 18px 14px}
+  .tcard{flex:1;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+  .tcard .lbl{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .tcard .val{font-size:22px;font-weight:700;margin-top:4px}
+  .tcard .val.g{color:var(--accent)}
+
+  .search{padding:0 18px 12px}
+  .search input{width:100%;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;padding:12px 14px;color:var(--text);font-size:15px;outline:none}
+  .search input::placeholder{color:var(--muted)}
+
+  .list{padding:0 18px;display:flex;flex-direction:column;gap:10px}
+  .item{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:14px 16px;display:flex;align-items:center;justify-content:space-between;
+    transition:.15s;cursor:pointer}
+  .item:active{background:var(--card2)}
+  .item .name{font-size:16px;font-weight:600}
+  .item .sub{color:var(--muted);font-size:12px;margin-top:3px}
+  .item .qty{text-align:right}
+  .item .qty .n{font-size:22px;font-weight:700}
+  .item .qty .n.low{color:var(--danger)}
+  .item .qty .u{color:var(--muted);font-size:12px}
+
+  .fab{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+    max-width:520px;width:calc(100% - 36px);display:flex;gap:10px;z-index:20}
+  .fab button{flex:1;border:none;border-radius:14px;padding:16px;font-size:15px;
+    font-weight:700;color:var(--text);background:var(--card2);border:1px solid var(--line)}
+
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:50;
+    align-items:flex-end;justify-content:center}
+  .overlay.on{display:flex}
+  .sheet{background:var(--bg);width:100%;max-width:520px;border-radius:20px 20px 0 0;
+    border-top:1px solid var(--line);padding:20px 18px 26px;max-height:88vh;overflow-y:auto;
+    animation:up .22s ease;position:relative}
+  @keyframes up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .sheet h2{font-size:18px;margin-bottom:4px}
+  .sheet .muted{color:var(--muted);font-size:13px;margin-bottom:16px}
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  .field input{width:100%;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;padding:13px 14px;color:var(--text);font-size:16px;outline:none}
+  .bigbtns{display:flex;gap:10px;margin-top:8px}
+  .bigbtns button{flex:1;border:none;border-radius:14px;padding:16px;font-weight:700;
+    font-size:16px;color:#fff;display:flex;flex-direction:column;align-items:center;gap:2px}
+  .bigbtns .in{background:var(--accent)}
+  .bigbtns .out{background:var(--danger)}
+  .bigbtns small{font-weight:500;opacity:.85;font-size:12px}
+  .primary{width:100%;background:var(--blue);border:none;border-radius:14px;
+    padding:15px;color:#fff;font-weight:700;font-size:15px;margin-top:8px}
+
+  .balance{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:16px;text-align:center;margin-bottom:16px}
+  .balance .n{font-size:38px;font-weight:800}
+  .balance .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+  .op{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .op:last-child{border:none}
+  .op .ic{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;
+    justify-content:center;font-size:18px;font-weight:700;flex-shrink:0}
+  .op .ic.in{background:rgba(63,185,80,.15);color:var(--accent)}
+  .op .ic.out{background:rgba(240,96,58,.15);color:var(--danger)}
+  .op .meta{flex:1}
+  .op .meta .t{font-weight:600;font-size:14px}
+  .op .meta .d{color:var(--muted);font-size:12px;margin-top:2px}
+  .op .amt{font-size:17px;font-weight:700}
+  .op .amt.in{color:var(--accent)} .op .amt.out{color:var(--danger)}
+  .close{position:absolute;top:14px;right:16px;background:var(--card);border:1px solid var(--line);
+    width:34px;height:34px;border-radius:50%;color:var(--muted);font-size:18px;line-height:1}
+  .empty{text-align:center;color:var(--muted);padding:40px 0;font-size:14px}
+  .urow{display:flex;align-items:center;justify-content:space-between;padding:12px 0;
+    border-bottom:1px solid var(--line)}
+  .urow:last-child{border:none}
+  .urow .role{font-size:12px;color:var(--muted)}
+  .urow button{background:rgba(240,96,58,.15);color:var(--danger);border:none;
+    padding:8px 14px;border-radius:9px;font-weight:600;font-size:13px}
+  .loader{text-align:center;color:var(--muted);padding:60px 0}
+</style>
+</head>
+<body>
+  <header>
+    <div><h1>Ombor</h1><p id="sub">Mahsulotlar va qoldiqlar</p></div>
+    <button class="admin-btn" id="adminBtn" onclick="openUsers()">👑 Xodimlar</button>
+  </header>
+
+  <div class="totals">
+    <div class="tcard"><div class="lbl">Turlar</div><div class="val" id="tKinds">—</div></div>
+    <div class="tcard"><div class="lbl">Jami dona</div><div class="val g" id="tQty">—</div></div>
+  </div>
+
+  <div class="search"><input id="q" placeholder="Mahsulot qidirish…" oninput="render()"></div>
+  <div class="list" id="list"><div class="loader">Yuklanmoqda…</div></div>
+
+  <div class="fab"><button onclick="openAdd()">+ Mahsulot qo'shish</button></div>
+
+  <!-- Add product -->
+  <div class="overlay" id="addOv"><div class="sheet">
+    <button class="close" onclick="close_('addOv')">×</button>
+    <h2>Yangi mahsulot</h2>
+    <div class="muted">Nomi va boshlang'ich sonini kiriting</div>
+    <div class="field"><label>Nomi</label><input id="pName" placeholder="Masalan: Lyulka"></div>
+    <div class="field"><label>Boshlang'ich soni</label><input id="pQty" type="number" inputmode="numeric" placeholder="0"></div>
+    <button class="primary" onclick="addProduct()">Qo'shish</button>
+  </div></div>
+
+  <!-- Operation -->
+  <div class="overlay" id="opOv"><div class="sheet">
+    <button class="close" onclick="close_('opOv')">×</button>
+    <h2 id="opTitle">Amal</h2>
+    <div class="muted" id="opStock">Qoldiq: 0</div>
+    <div class="field"><label>Soni</label><input id="opQty" type="number" inputmode="numeric" placeholder="0"></div>
+    <div class="bigbtns">
+      <button class="in" onclick="doOp('in')">Приход<small>+</small></button>
+      <button class="out" onclick="doOp('out')">Расход<small>−</small></button>
+    </div>
+    <div style="height:14px"></div>
+    <div id="opHistory"></div>
+  </div></div>
+
+  <!-- Admin: users -->
+  <div class="overlay" id="usersOv"><div class="sheet">
+    <button class="close" onclick="close_('usersOv')">×</button>
+    <h2>Xodimlar</h2>
+    <div class="muted">Telegram ID orqali qo'shing. Xodim /id yozib ID sini olsin.</div>
+    <div class="field"><label>Yangi ID</label><input id="newId" type="number" inputmode="numeric" placeholder="123456789"></div>
+    <button class="primary" onclick="addUser()">Xodim qo'shish</button>
+    <div style="height:16px"></div>
+    <div id="usersList"></div>
+  </div></div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+if (tg){ tg.ready(); tg.expand(); }
+const INIT = tg?.initData || "";
+
+let PRODUCTS = [], ME = null, curPid = null;
+
+async function api(path, opts={}){
+  const r = await fetch("/api"+path, {
+    ...opts,
+    headers:{ "Content-Type":"application/json", "X-Init-Data":INIT, ...(opts.headers||{}) }
+  });
+  if(!r.ok){ const e=await r.json().catch(()=>({detail:"Xato"})); throw new Error(e.detail||"Xato"); }
+  return r.status===204?null:r.json();
+}
+
+const fmt = ts=>{ const d=new Date(ts*1000);
+  return d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})+' '+
+         d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}); };
+
+async function boot(){
+  try{
+    ME = await api("/me");
+    if(ME.role==="admin") document.getElementById("adminBtn").style.display="block";
+    await load();
+  }catch(e){
+    document.getElementById("list").innerHTML=
+      `<div class="empty">${e.message}<br><br>Botga qaytib /start bosing.</div>`;
+  }
+}
+
+async function load(){
+  PRODUCTS = await api("/products");
+  render();
+}
+
+function render(){
+  const q=(document.getElementById('q').value||'').toLowerCase();
+  const items=PRODUCTS.filter(p=>p.name.toLowerCase().includes(q));
+  document.getElementById('tKinds').textContent=PRODUCTS.length;
+  document.getElementById('tQty').textContent=PRODUCTS.reduce((s,p)=>s+p.qty,0);
+  const el=document.getElementById('list');
+  if(!PRODUCTS.length){el.innerHTML='<div class="empty">Hali mahsulot yo\'q.<br>Pastdan qo\'shing.</div>';return}
+  if(!items.length){el.innerHTML='<div class="empty">Topilmadi</div>';return}
+  el.innerHTML=items.map(p=>`
+    <div class="item" onclick="openOp(${p.id})">
+      <div><div class="name">${esc(p.name)}</div>
+        <div class="sub">${p.ops_count} ta operatsiya</div></div>
+      <div class="qty"><div class="n ${p.qty<=3?'low':''}">${p.qty}</div><div class="u">dona</div></div>
+    </div>`).join('');
+}
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function openAdd(){document.getElementById('pName').value='';document.getElementById('pQty').value='';show('addOv')}
+async function addProduct(){
+  const name=document.getElementById('pName').value.trim();
+  const qty=parseInt(document.getElementById('pQty').value)||0;
+  if(!name)return;
+  try{ await api("/products",{method:"POST",body:JSON.stringify({name,qty})});
+    close_('addOv'); await load(); tg?.HapticFeedback?.notificationOccurred('success');
+  }catch(e){ alert(e.message); }
+}
+
+async function openOp(pid){
+  curPid=pid;
+  const p=PRODUCTS.find(x=>x.id===pid);
+  document.getElementById('opTitle').textContent=p.name;
+  document.getElementById('opStock').textContent='Qoldiq: '+p.qty+' dona';
+  document.getElementById('opQty').value='';
+  document.getElementById('opHistory').innerHTML='<div class="empty">Yuklanmoqda…</div>';
+  show('opOv');
+  await renderHistory(pid);
+}
+async function renderHistory(pid){
+  const h=await api(`/products/${pid}/history`);
+  const el=document.getElementById('opHistory');
+  let inner=`<div class="balance"><div class="n">${h.product.qty}</div><div class="l">Hozirgi qoldiq</div></div>`;
+  if(!h.ops.length){inner+='<div class="empty">Hali operatsiya yo\'q</div>'}
+  else inner+=h.ops.map(o=>`
+    <div class="op"><div class="ic ${o.type}">${o.type==='in'?'↓':'↑'}</div>
+      <div class="meta"><div class="t">${o.type==='in'?'Приход':'Расход'}</div>
+        <div class="d">${fmt(o.ts)}</div></div>
+      <div class="amt ${o.type}">${o.type==='in'?'+':'−'}${o.qty}</div></div>`).join('');
+  el.innerHTML=inner;
+}
+async function doOp(type){
+  const qty=parseInt(document.getElementById('opQty').value);
+  if(!qty||qty<=0)return;
+  try{
+    const r=await api(`/products/${curPid}/op`,{method:"POST",body:JSON.stringify({type,qty})});
+    document.getElementById('opStock').textContent='Qoldiq: '+r.qty+' dona';
+    document.getElementById('opQty').value='';
+    const p=PRODUCTS.find(x=>x.id===curPid); if(p){p.qty=r.qty;p.ops_count++;}
+    await renderHistory(curPid); render();
+    tg?.HapticFeedback?.impactOccurred('medium');
+  }catch(e){ alert(e.message); }
+}
+
+// --- Admin ---
+async function openUsers(){ show('usersOv'); document.getElementById('newId').value=''; await renderUsers(); }
+async function renderUsers(){
+  const el=document.getElementById('usersList');
+  try{
+    const users=await api("/users");
+    el.innerHTML=users.map(u=>`
+      <div class="urow">
+        <div><div>${u.role==='admin'?'👑':'👤'} ${u.tg_id}</div>
+          <div class="role">${u.role}</div></div>
+        ${u.tg_id===ME.id?'<span class="role">Siz</span>':
+          `<button onclick="delUser(${u.tg_id})">Chiqarish</button>`}
+      </div>`).join('');
+  }catch(e){ el.innerHTML=`<div class="empty">${e.message}</div>`; }
+}
+async function addUser(){
+  const id=parseInt(document.getElementById('newId').value);
+  if(!id)return;
+  try{ await api("/users",{method:"POST",body:JSON.stringify({tg_id:id,role:"xodim"})});
+    document.getElementById('newId').value=''; await renderUsers();
+  }catch(e){ alert(e.message); }
+}
+async function delUser(id){
+  if(!confirm(id+" ni chiqarasizmi?"))return;
+  try{ await api("/users/"+id,{method:"DELETE"}); await renderUsers(); }
+  catch(e){ alert(e.message); }
+}
+
+function show(id){document.getElementById(id).classList.add('on')}
+function close_(id){document.getElementById(id).classList.remove('on')}
+document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('on')}));
+
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+boot();
+</script>
+</body>
+</html>
