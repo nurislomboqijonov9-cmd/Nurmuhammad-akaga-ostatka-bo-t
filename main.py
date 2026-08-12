@@ -11,6 +11,7 @@ from telebot import types
 # ================== SOZLAMALAR ==================
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "")
+ACCESS_CODE = os.getenv("ACCESS_CODE", "1111")  # brauzer-ilova uchun umumiy kod
 DATA_DIR = os.getenv("DATA_DIR", "/data")
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "ombor.db")
@@ -144,14 +145,18 @@ def verify_init_data(init_data):
         return None
 
 
-def current_user(init_data):
+def current_user(init_data, code=""):
+    # 1) Telegram ichidan ochilgan bo'lsa — initData bilan
     u = verify_init_data(init_data)
-    if not u:
-        raise HTTPException(401, "Auth xato. Botdan qayta oching.")
-    role = get_role(u["id"])
-    if not role:
-        raise HTTPException(403, "Sizga ruxsat yo'q. Admin sizni qo'shishi kerak.")
-    return {"id": u["id"], "role": role}
+    if u:
+        role = get_role(u["id"])
+        if not role:
+            raise HTTPException(403, "Sizga ruxsat yo'q. Admin sizni qo'shishi kerak.")
+        return {"id": u["id"], "role": role}
+    # 2) Brauzerdan ochilgan bo'lsa — umumiy kod bilan (xodim huquqi)
+    if code and code == ACCESS_CODE:
+        return {"id": 0, "role": "xodim"}
+    raise HTTPException(401, "Kirish kodi noto'g'ri yoki botdan qayta oching.")
 
 
 # ================== API ==================
@@ -159,19 +164,22 @@ app = FastAPI(title="Ombor")
 
 
 @app.get("/api/me")
-def me(x: str = Header(None, alias="X-Init-Data")):
-    return current_user(x or "")
+def me(x: str = Header(None, alias="X-Init-Data"),
+       code: str = Header(None, alias="X-Access-Code")):
+    return current_user(x or "", code or "")
 
 
 @app.get("/api/products")
-def products(x: str = Header(None, alias="X-Init-Data")):
-    current_user(x or "")
+def products(x: str = Header(None, alias="X-Init-Data"),
+       code: str = Header(None, alias="X-Access-Code")):
+    current_user(x or "", code or "")
     return list_products()
 
 
 @app.post("/api/products")
-def create_product(body: dict = Body(...), x: str = Header(None, alias="X-Init-Data")):
-    current_user(x or "")
+def create_product(body: dict = Body(...), x: str = Header(None, alias="X-Init-Data"),
+       code: str = Header(None, alias="X-Access-Code")):
+    current_user(x or "", code or "")
     name = (body.get("name") or "").strip()
     qty = int(body.get("qty") or 0)
     if not name:
@@ -180,8 +188,9 @@ def create_product(body: dict = Body(...), x: str = Header(None, alias="X-Init-D
 
 
 @app.post("/api/products/{pid}/op")
-def op(pid: int, body: dict = Body(...), x: str = Header(None, alias="X-Init-Data")):
-    current_user(x or "")
+def op(pid: int, body: dict = Body(...), x: str = Header(None, alias="X-Init-Data"),
+       code: str = Header(None, alias="X-Access-Code")):
+    current_user(x or "", code or "")
     t = body.get("type")
     qty = int(body.get("qty") or 0)
     if t not in ("in", "out") or qty <= 0:
@@ -193,8 +202,9 @@ def op(pid: int, body: dict = Body(...), x: str = Header(None, alias="X-Init-Dat
 
 
 @app.get("/api/products/{pid}/history")
-def history(pid: int, x: str = Header(None, alias="X-Init-Data")):
-    current_user(x or "")
+def history(pid: int, x: str = Header(None, alias="X-Init-Data"),
+       code: str = Header(None, alias="X-Access-Code")):
+    current_user(x or "", code or "")
     h = product_history(pid)
     if not h:
         raise HTTPException(404, "Topilmadi")
@@ -202,16 +212,18 @@ def history(pid: int, x: str = Header(None, alias="X-Init-Data")):
 
 
 @app.get("/api/users")
-def users(x: str = Header(None, alias="X-Init-Data")):
-    u = current_user(x or "")
+def users(x: str = Header(None, alias="X-Init-Data"),
+       code: str = Header(None, alias="X-Access-Code")):
+    u = current_user(x or "", code or "")
     if u["role"] != "admin":
         raise HTTPException(403, "Faqat admin")
     return list_users()
 
 
 @app.post("/api/users")
-def add_user_api(body: dict = Body(...), x: str = Header(None, alias="X-Init-Data")):
-    u = current_user(x or "")
+def add_user_api(body: dict = Body(...), x: str = Header(None, alias="X-Init-Data"),
+       code: str = Header(None, alias="X-Access-Code")):
+    u = current_user(x or "", code or "")
     if u["role"] != "admin":
         raise HTTPException(403, "Faqat admin")
     tid = int(body.get("tg_id") or 0)
@@ -223,8 +235,9 @@ def add_user_api(body: dict = Body(...), x: str = Header(None, alias="X-Init-Dat
 
 
 @app.delete("/api/users/{tg_id}")
-def del_user_api(tg_id: int, x: str = Header(None, alias="X-Init-Data")):
-    u = current_user(x or "")
+def del_user_api(tg_id: int, x: str = Header(None, alias="X-Init-Data"),
+       code: str = Header(None, alias="X-Access-Code")):
+    u = current_user(x or "", code or "")
     if u["role"] != "admin":
         raise HTTPException(403, "Faqat admin")
     if tg_id == u["id"]:

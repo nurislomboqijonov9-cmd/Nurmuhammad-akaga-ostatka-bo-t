@@ -56,6 +56,8 @@
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:50;
     align-items:flex-end;justify-content:center}
   .overlay.on{display:flex}
+  #loginOv.on{align-items:center;padding:20px}
+  #loginOv .sheet{animation:none}
   .sheet{background:var(--bg);width:100%;max-width:520px;border-radius:20px 20px 0 0;
     border-top:1px solid var(--line);padding:20px 18px 26px;max-height:88vh;overflow-y:auto;
     animation:up .22s ease;position:relative}
@@ -103,6 +105,17 @@
 </style>
 </head>
 <body>
+  <!-- Login (faqat brauzerda) -->
+  <div class="overlay" id="loginOv"><div class="sheet" style="border-radius:20px;margin:auto;max-width:340px">
+    <h2>Kirish</h2>
+    <div class="muted">Ilovaga kirish kodini kiriting</div>
+    <div class="field"><input id="codeInput" type="tel" inputmode="numeric"
+      placeholder="Kod" style="text-align:center;font-size:24px;letter-spacing:6px"
+      onkeydown="if(event.key==='Enter')submitLogin()"></div>
+    <div class="muted" id="loginErr" style="color:var(--danger);min-height:16px"></div>
+    <button class="primary" onclick="submitLogin()">Kirish</button>
+  </div></div>
+
   <header>
     <div><h1>Ombor</h1><p id="sub">Mahsulotlar va qoldiqlar</p></div>
     <button class="admin-btn" id="adminBtn" onclick="openUsers()">👑 Xodimlar</button>
@@ -159,11 +172,13 @@ if (tg){ tg.ready(); tg.expand(); }
 const INIT = tg?.initData || "";
 
 let PRODUCTS = [], ME = null, curPid = null;
+let CODE = localStorage.getItem('ombor_code') || "";
 
 async function api(path, opts={}){
   const r = await fetch("/api"+path, {
     ...opts,
-    headers:{ "Content-Type":"application/json", "X-Init-Data":INIT, ...(opts.headers||{}) }
+    headers:{ "Content-Type":"application/json", "X-Init-Data":INIT,
+              "X-Access-Code":CODE, ...(opts.headers||{}) }
   });
   if(!r.ok){ const e=await r.json().catch(()=>({detail:"Xato"})); throw new Error(e.detail||"Xato"); }
   return r.status===204?null:r.json();
@@ -174,14 +189,33 @@ const fmt = ts=>{ const d=new Date(ts*1000);
          d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}); };
 
 async function boot(){
+  // Telegram ichida emas va kod ham yo'q bo'lsa — login ekrani
+  if(!INIT && !CODE){ showLogin(); return; }
   try{
     ME = await api("/me");
     if(ME.role==="admin") document.getElementById("adminBtn").style.display="block";
     await load();
   }catch(e){
-    document.getElementById("list").innerHTML=
-      `<div class="empty">${e.message}<br><br>Botga qaytib /start bosing.</div>`;
+    if(!INIT){ // brauzer — kod noto'g'ri bo'lsa qayta so'raymiz
+      CODE=""; localStorage.removeItem('ombor_code'); showLogin(e.message);
+    }else{
+      document.getElementById("list").innerHTML=
+        `<div class="empty">${e.message}<br><br>Botga qaytib /start bosing.</div>`;
+    }
   }
+}
+
+function showLogin(msg){
+  document.getElementById('loginOv').classList.add('on');
+  if(msg) document.getElementById('loginErr').textContent = msg;
+}
+async function submitLogin(){
+  const v=document.getElementById('codeInput').value.trim();
+  if(!v)return;
+  CODE=v; localStorage.setItem('ombor_code', v);
+  document.getElementById('loginErr').textContent='';
+  document.getElementById('loginOv').classList.remove('on');
+  await boot();
 }
 
 async function load(){
