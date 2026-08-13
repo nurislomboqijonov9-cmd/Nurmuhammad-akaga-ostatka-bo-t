@@ -102,7 +102,7 @@ def add_product(name, qty):
         return pid
 
 
-def do_op(pid, type_, qty):
+def do_op(pid, type_, qty, ts=None):
     with conn() as c:
         p = c.execute("SELECT qty FROM products WHERE id=?", (pid,)).fetchone()
         if not p:
@@ -112,8 +112,32 @@ def do_op(pid, type_, qty):
         new_qty = p["qty"] + (qty if type_ == "in" else -qty)
         c.execute("UPDATE products SET qty=? WHERE id=?", (new_qty, pid))
         c.execute("INSERT INTO ops(pid,type,qty,ts) VALUES(?,?,?,?)",
-                  (pid, type_, qty, int(time.time())))
+                  (pid, type_, qty, ts or int(time.time())))
         return new_qty
+
+
+def delete_op(op_id):
+    # operatsiyani o'chiradi va qoldiqni orqaga qaytaradi
+    with conn() as c:
+        o = c.execute("SELECT pid,type,qty FROM ops WHERE id=?", (op_id,)).fetchone()
+        if not o:
+            raise ValueError("Operatsiya topilmadi")
+        # teskarisi: приход o'chsa -, расход o'chsa +
+        delta = -o["qty"] if o["type"] == "in" else o["qty"]
+        c.execute("UPDATE products SET qty=qty+? WHERE id=?", (delta, o["pid"]))
+        c.execute("DELETE FROM ops WHERE id=?", (op_id,))
+        r = c.execute("SELECT qty FROM products WHERE id=?", (o["pid"],)).fetchone()
+        return r["qty"] if r else 0
+
+
+def rename_product(pid, name):
+    with conn() as c:
+        c.execute("UPDATE products SET name=? WHERE id=?", (name, pid))
+
+
+def delete_product(pid):
+    with conn() as c:
+        c.execute("DELETE FROM products WHERE id=?", (pid,))  # ops ham o'chadi (CASCADE)
 
 
 def product_history(pid):
@@ -121,7 +145,7 @@ def product_history(pid):
         p = c.execute("SELECT id,name,qty FROM products WHERE id=?", (pid,)).fetchone()
         if not p:
             return None
-        ops = c.execute("SELECT type,qty,ts FROM ops WHERE pid=? ORDER BY ts DESC",
+        ops = c.execute("SELECT id,type,qty,ts FROM ops WHERE pid=? ORDER BY ts DESC",
                         (pid,)).fetchall()
         return {"product": dict(p), "ops": [dict(o) for o in ops]}
 
@@ -193,12 +217,43 @@ def op(pid: int, body: dict = Body(...), x: str = Header(None, alias="X-Init-Dat
     current_user(x or "", code or "")
     t = body.get("type")
     qty = int(body.get("qty") or 0)
+    ts = body.get("ts")  # ixtiyoriy sana (sekundlarda). bo'lmasa hozir.
+    ts = int(ts) if ts else None
     if t not in ("in", "out") or qty <= 0:
         raise HTTPException(400, "Noto'g'ri amal")
     try:
-        return {"qty": do_op(pid, t, qty)}
+        return {"qty": do_op(pid, t, qty, ts)}
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@app.delete("/api/ops/{op_id}")
+def del_op(op_id: int, x: str = Header(None, alias="X-Init-Data"),
+       code: str = Header(None, alias="X-Access-Code")):
+    current_user(x or "", code or "")
+    try:
+        return {"qty": delete_op(op_id)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.patch("/api/products/{pid}")
+def edit_product(pid: int, body: dict = Body(...), x: str = Header(None, alias="X-Init-Data"),
+       code: str = Header(None, alias="X-Access-Code")):
+    current_user(x or "", code or "")
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Nomi bo'sh")
+    rename_product(pid, name)
+    return {"ok": True}
+
+
+@app.delete("/api/products/{pid}")
+def del_product(pid: int, x: str = Header(None, alias="X-Init-Data"),
+       code: str = Header(None, alias="X-Access-Code")):
+    current_user(x or "", code or "")
+    delete_product(pid)
+    return {"ok": True}
 
 
 @app.get("/api/products/{pid}/history")
