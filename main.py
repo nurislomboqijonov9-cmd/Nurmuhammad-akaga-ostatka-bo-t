@@ -150,6 +150,40 @@ def product_history(pid):
         return {"product": dict(p), "ops": [dict(o) for o in ops]}
 
 
+def report_period(ts_from, ts_to):
+    # [ts_from, ts_to] oralig'idagi kirim/chiqim, mahsulot bo'yicha
+    with conn() as c:
+        rows = c.execute("""
+            SELECT p.name AS name,
+                   SUM(CASE WHEN o.type='in'  THEN o.qty ELSE 0 END) AS kirim,
+                   SUM(CASE WHEN o.type='out' THEN o.qty ELSE 0 END) AS chiqim
+            FROM ops o JOIN products p ON p.id=o.pid
+            WHERE o.ts>=? AND o.ts<=?
+            GROUP BY o.pid
+            HAVING kirim>0 OR chiqim>0
+            ORDER BY p.name
+        """, (ts_from, ts_to)).fetchall()
+        items = [dict(r) for r in rows]
+        total_in = sum(r["kirim"] for r in items)
+        total_out = sum(r["chiqim"] for r in items)
+        return {"items": items, "total_in": total_in, "total_out": total_out}
+
+
+def ostatka_at(ts_to):
+    # ts_to gacha (o'sha payt holatiga) har mahsulot qoldig'i
+    with conn() as c:
+        rows = c.execute("""
+            SELECT p.name AS name,
+                   COALESCE(SUM(CASE WHEN o.type='in'  THEN o.qty
+                                     WHEN o.type='out' THEN -o.qty ELSE 0 END), 0) AS qty
+            FROM products p
+            LEFT JOIN ops o ON o.pid=p.id AND o.ts<=?
+            GROUP BY p.id
+            ORDER BY p.name
+        """, (ts_to,)).fetchall()
+        return [dict(r) for r in rows]
+
+
 # ================== AUTH (Telegram initData) ==================
 def verify_init_data(init_data):
     if not init_data or not BOT_TOKEN:
@@ -375,11 +409,16 @@ if bot:
 
     @bot.message_handler(commands=["help"])
     def _help(m):
-        if get_role(m.from_user.id) != "admin":
-            bot.reply_to(m, "Ochish uchun /start")
-            return
-        bot.reply_to(m, "<b>Admin:</b>\n/add_xodim ID\n/add_admin ID\n"
-                        "/remove ID\n/xodimlar\n\nXodim /id yozib ID sini olsin.")
+        if not get_role(m.from_user.id):
+            bot.reply_to(m, "Ochish uchun /start"); return
+        txt = ("<b>Hisobot buyruqlari:</b>\n"
+               "/hisobot 26.07.26 — o'sha kungi kirim/chiqim\n"
+               "/hisobot 26.07.26 30.07.26 — oraliq kirim/chiqim\n"
+               "/ostatka 26.07.26 — o'sha kungi qoldiq\n")
+        if get_role(m.from_user.id) == "admin":
+            txt += ("\n<b>Admin:</b>\n/add_xodim ID\n/add_admin ID\n"
+                    "/remove ID\n/xodimlar\n\nXodim /id yozib ID sini olsin.")
+        bot.reply_to(m, txt)
 
     @bot.message_handler(commands=["add_xodim"])
     def _ax(m):
@@ -420,6 +459,77 @@ if bot:
         lines = [f"{'👑' if u['role']=='admin' else '👤'} <code>{u['tg_id']}</code> — {u['role']}"
                  for u in us]
         bot.reply_to(m, "<b>Foydalanuvchilar:</b>\n" + "\n".join(lines))
+
+    # --- sana yordamchilari ---
+    def _day_bounds(s):
+        # "26.07.26" yoki "26.07.2026" -> (kun boshi, kun oxiri) sekundlarda
+        import datetime as _dt
+        s = s.strip().replace("/", ".").replace("-", ".")
+        d, mo, y = s.split(".")
+        y = int(y); y = y + 2000 if y < 100 else y
+        day = _dt.datetime(y, int(mo), int(d))
+        start = int(day.timestamp())
+        end = int((day + _dt.timedelta(days=1)).timestamp()) - 1
+        return start, end, day.strftime("%d.%m.%Y")
+
+    @bot.message_handler(commands=["hisobot"])
+    def _hisobot(m):
+        if not get_role(m.from_user.id):
+            return
+        parts = m.text.split()
+        try:
+            if len(parts) == 2:
+                f, _, d1 = _day_bounds(parts[1])
+                _, t, _ = _day_bounds(parts[1])
+                title = d1
+            elif len(parts) >= 3:
+                f, _, d1 = _day_bounds(parts[1])
+                _, t, d2 = _day_bounds(parts[2])
+                title = f"{d1} — {d2}"
+            else:
+                bot.reply_to(m, "Format:\n/hisobot 26.07.26\n/hisobot 26.07.26 30.07.26")
+                return
+        except Exception:
+            bot.reply_to(m, "Sana noto'g'ri. Namuna: /hisobot 26.07.26")
+            return
+        r = report_period(f, t)
+        if not r["items"]:
+            bot.reply_to(m, f"📅 <b>{title}</b>\n\nBu davrda operatsiya yo'q.")
+            return
+        lines = [f"📅 <b>{title}</b>\n"]
+        for it in r["items"]:
+            seg = []
+            if it["kirim"]:
+                seg.append(f"➕{it['kirim']}")
+            if it["chiqim"]:
+                seg.append(f"➖{it['chiqim']}")
+            lines.append(f"• {it['name']}: {'  '.join(seg)}")
+        lines.append(f"\n<b>Jami kirim: +{r['total_in']}</b>")
+        lines.append(f"<b>Jami chiqim: −{r['total_out']}</b>")
+        bot.reply_to(m, "\n".join(lines))
+
+    @bot.message_handler(commands=["ostatka"])
+    def _ostatka(m):
+        if not get_role(m.from_user.id):
+            return
+        parts = m.text.split()
+        if len(parts) < 2:
+            bot.reply_to(m, "Format: /ostatka 26.07.26")
+            return
+        try:
+            _, end, title = _day_bounds(parts[1])
+        except Exception:
+            bot.reply_to(m, "Sana noto'g'ri. Namuna: /ostatka 26.07.26")
+            return
+        rows = ostatka_at(end)
+        rows = [r for r in rows if r["qty"] != 0]  # 0 bo'lganlarni yashiramiz
+        if not rows:
+            bot.reply_to(m, f"📦 <b>{title} holatiga qoldiq</b>\n\nQoldiq yo'q.")
+            return
+        lines = [f"📦 <b>{title} holatiga qoldiq</b>\n"]
+        for r in rows:
+            lines.append(f"• {r['name']}: <b>{r['qty']}</b>")
+        bot.reply_to(m, "\n".join(lines))
 
 
 # ================== ISHGA TUSHIRISH ==================
