@@ -95,6 +95,8 @@
   .op .meta{flex:1}
   .op .meta .t{font-weight:600;font-size:14px}
   .op .meta .d{color:var(--muted);font-size:12px;margin-top:2px}
+  .op .meta .note{font-size:13px;margin-top:4px;word-break:break-word}
+  .balance .n.neg{color:var(--danger)}
   .op .amt{font-size:17px;font-weight:700}
   .op .amt.in{color:var(--accent)} .op .amt.out{color:var(--danger)}
   .close{position:absolute;top:14px;right:16px;background:var(--card);border:1px solid var(--line);
@@ -158,6 +160,8 @@
     <div class="field"><label>Soni</label><input id="opQty" type="number" inputmode="numeric" placeholder="0"></div>
     <div class="field"><label>Sana (ixtiyoriy — bo'sh bo'lsa hozirgi vaqt)</label>
       <input id="opDate" type="datetime-local"></div>
+    <div class="field"><label>Izoh (ixtiyoriy)</label>
+      <input id="opNote" type="text" maxlength="300" placeholder="Masalan: kimga, nima uchun…"></div>
     <div class="bigbtns">
       <button class="in" onclick="doOp('in')">Приход<small>+</small></button>
       <button class="out" onclick="doOp('out')">Расход<small>−</small></button>
@@ -268,6 +272,7 @@ async function openOp(pid){
   document.getElementById('opStock').textContent='Qoldiq: '+p.qty+' dona';
   document.getElementById('opQty').value='';
   document.getElementById('opDate').value='';
+  document.getElementById('opNote').value='';
   document.getElementById('opHistory').innerHTML='<div class="empty">Yuklanmoqda…</div>';
   show('opOv');
   await renderHistory(pid);
@@ -275,12 +280,13 @@ async function openOp(pid){
 async function renderHistory(pid){
   const h=await api(`/products/${pid}/history`);
   const el=document.getElementById('opHistory');
-  let inner=`<div class="balance"><div class="n">${h.product.qty}</div><div class="l">Hozirgi qoldiq</div></div>`;
+  let inner=`<div class="balance"><div class="n ${h.product.qty<0?'neg':''}">${h.product.qty}</div><div class="l">Hozirgi qoldiq</div></div>`;
   if(!h.ops.length){inner+='<div class="empty">Hali operatsiya yo\'q</div>'}
   else inner+=h.ops.map(o=>`
     <div class="op"><div class="ic ${o.type}">${o.type==='in'?'↓':'↑'}</div>
       <div class="meta"><div class="t">${o.type==='in'?'Приход':'Расход'}</div>
-        <div class="d">${fmt(o.ts)}</div></div>
+        <div class="d">${fmt(o.ts)}</div>
+        ${o.note?`<div class="note">💬 ${esc(o.note)}</div>`:''}</div>
       <div class="amt ${o.type}">${o.type==='in'?'+':'−'}${o.qty}</div>
       <button class="del" onclick="delOp(${o.id})">×</button></div>`).join('');
   el.innerHTML=inner;
@@ -291,11 +297,13 @@ async function doOp(type){
   // sana tanlangan bo'lsa — sekundlarga aylantiramiz
   const dv=document.getElementById('opDate').value;
   const ts=dv?Math.floor(new Date(dv).getTime()/1000):undefined;
+  const note=document.getElementById('opNote').value.trim();
   try{
-    const r=await api(`/products/${curPid}/op`,{method:"POST",body:JSON.stringify({type,qty,ts})});
+    const r=await api(`/products/${curPid}/op`,{method:"POST",body:JSON.stringify({type,qty,ts,note})});
     document.getElementById('opStock').textContent='Qoldiq: '+r.qty+' dona';
     document.getElementById('opQty').value='';
     document.getElementById('opDate').value='';
+    document.getElementById('opNote').value='';
     const p=PRODUCTS.find(x=>x.id===curPid); if(p){p.qty=r.qty;p.ops_count++;}
     await renderHistory(curPid); render();
     tg?.HapticFeedback?.impactOccurred('medium');

@@ -48,8 +48,13 @@ def init_db():
             type TEXT NOT NULL,
             qty INTEGER NOT NULL,
             ts INTEGER NOT NULL,
+            note TEXT,
             FOREIGN KEY(pid) REFERENCES products(id) ON DELETE CASCADE);
         """)
+        # eski bazaga izoh (note) ustunini qo'shamiz
+        cols = [r["name"] for r in c.execute("PRAGMA table_info(ops)").fetchall()]
+        if "note" not in cols:
+            c.execute("ALTER TABLE ops ADD COLUMN note TEXT")
     admin_id = os.getenv("ADMIN_ID")
     if admin_id:
         try:
@@ -102,17 +107,16 @@ def add_product(name, qty):
         return pid
 
 
-def do_op(pid, type_, qty, ts=None):
+def do_op(pid, type_, qty, ts=None, note=None):
     with conn() as c:
         p = c.execute("SELECT qty FROM products WHERE id=?", (pid,)).fetchone()
         if not p:
             raise ValueError("Mahsulot topilmadi")
-        if type_ == "out" and qty > p["qty"]:
-            raise ValueError(f"Qoldiq yetarli emas. Bor: {p['qty']}")
+        # qoldiq minusga ham tushishi mumkin (prixod kiritilmasdan chiqim qilinsa)
         new_qty = p["qty"] + (qty if type_ == "in" else -qty)
         c.execute("UPDATE products SET qty=? WHERE id=?", (new_qty, pid))
-        c.execute("INSERT INTO ops(pid,type,qty,ts) VALUES(?,?,?,?)",
-                  (pid, type_, qty, ts or int(time.time())))
+        c.execute("INSERT INTO ops(pid,type,qty,ts,note) VALUES(?,?,?,?,?)",
+                  (pid, type_, qty, ts or int(time.time()), note))
         return new_qty
 
 
@@ -145,7 +149,7 @@ def product_history(pid):
         p = c.execute("SELECT id,name,qty FROM products WHERE id=?", (pid,)).fetchone()
         if not p:
             return None
-        ops = c.execute("SELECT id,type,qty,ts FROM ops WHERE pid=? ORDER BY ts DESC",
+        ops = c.execute("SELECT id,type,qty,ts,note FROM ops WHERE pid=? ORDER BY ts DESC",
                         (pid,)).fetchall()
         return {"product": dict(p), "ops": [dict(o) for o in ops]}
 
@@ -253,10 +257,11 @@ def op(pid: int, body: dict = Body(...), x: str = Header(None, alias="X-Init-Dat
     qty = int(body.get("qty") or 0)
     ts = body.get("ts")  # ixtiyoriy sana (sekundlarda). bo'lmasa hozir.
     ts = int(ts) if ts else None
+    note = str(body.get("note") or "").strip()[:300] or None  # ixtiyoriy izoh
     if t not in ("in", "out") or qty <= 0:
         raise HTTPException(400, "Noto'g'ri amal")
     try:
-        return {"qty": do_op(pid, t, qty, ts)}
+        return {"qty": do_op(pid, t, qty, ts, note)}
     except ValueError as e:
         raise HTTPException(400, str(e))
 
